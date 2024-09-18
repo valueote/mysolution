@@ -6,60 +6,55 @@ void primes(int) __attribute__((noreturn));
 void
 primes(int fd)
 {
-  int buf;
-
-  if(read(fd, &buf, sizeof(int)) <= 0){
+  int p;
+  if(read(fd, &p, sizeof(int)) <= 0){
+    close(fd);
     exit(0);
   }
   
-  int p = buf;
   printf("prime %d\n", p);
 
   int pipeline[2];
-  pipe(pipeline);
+  if(pipe(pipeline) < 0){
+    fprintf(2, "pipe failed\n");
+    exit(1);
+  }
 
   if(fork() == 0){
     close(pipeline[1]);
+    close(fd);
     primes(pipeline[0]);
-    close(pipeline[0]);
   }else{
     close(pipeline[0]);
-    while(read(fd, &buf, sizeof(int)) > 0){
-      int n = buf;
+    int n;
+    while(read(fd, &n, sizeof(int)) > 0){
       if(n % p != 0){
-        write(pipeline[1], &buf, sizeof(int));
+        write(pipeline[1], &n, sizeof(int));
       }
     }
     
     close(fd);
     close(pipeline[1]);
     wait(0);
+    exit(0);
   }  
-  exit(0);
 }
 
 int main()
 {
-  /*
-  p = get a number from left neighbor
-  print p
-  loop:
-    n = get a number from left neighbor
-    if (p does not divide n)
-        send n to right neighbor
-   */
   int pipeline[2];
-  pipe(pipeline);
-  int buf;
+  if(pipe(pipeline) < 0){
+    fprintf(2, "pipe failed\n");
+    exit(1);
+  }
 
   if(fork() == 0){
     close(pipeline[1]);
     primes(pipeline[0]);
-    close(pipeline[0]);
   }else {
-    for(int i = 2; i < 281; i++){
-      buf = i;
-      write(pipeline[1], &buf, sizeof(int));
+    close(pipeline[0]);
+    for(int i = 2; i <= 280; i++){
+      write(pipeline[1], &i, sizeof(int));
     }
     close(pipeline[1]);
     wait(0);
