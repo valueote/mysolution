@@ -5,9 +5,9 @@
 #include "kernel/fcntl.h"
 
 void find(char* path, char* filename){
-  
+  char buf[512],*p;
   int fd;
-  
+  struct dirent de;
   struct stat st;
   char* cur = ".";
   char* up = "..";
@@ -31,11 +31,28 @@ void find(char* path, char* filename){
     break;
   case T_DIR:
     if(!strcmp(filename, path)){
-      printf("%s\n", path);
+      printf("%s\n", buf);
     }
 
-    if(strcmp(path, cur) && strcmp(path, up)){
-      printf("%s", "not finished\n");
+    strcpy(buf, path);
+    p = buf + strlen(buf);
+    *p++ = '/';
+    
+    while(read(fd, &de, sizeof(de)) == sizeof(de)){
+      if(de.inum == 0)
+        continue;
+      memmove(p, de.name, DIRSIZ);
+      p[DIRSIZ] = 0;
+
+      if(stat(buf, &st) < 0){
+        printf("find: cannot stat %s\n", buf);
+        continue;
+      }
+      if(!strcmp(p, filename))
+        printf("%s\n", buf);
+      
+      if(st.type == T_DIR && strcmp(up, p) && strcmp(cur, p))
+        find(buf,filename);
     }
     break;
   }
