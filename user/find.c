@@ -31,7 +31,8 @@ void find(char* path, char* filename){
     break;
   case T_DIR:
     if(!strcmp(filename, path)){
-      printf("%s\n", buf);
+      printf("%s\n", path);
+      break;
     }
 
     strcpy(buf, path);
