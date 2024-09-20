@@ -7,6 +7,7 @@ void
 primes(int fd)
 {
   int p;
+
   if(read(fd, &p, sizeof(int)) <= 0){
     close(fd);
     exit(0);
@@ -15,15 +16,13 @@ primes(int fd)
   printf("prime %d\n", p);
 
   int pipeline[2];
-  if(pipe(pipeline) < 0){
-    fprintf(2, "pipe failed\n");
-    exit(1);
-  }
+  pipe(pipeline);
 
   if(fork() == 0){
-    close(pipeline[1]);
     close(fd);
+    close(pipeline[1]);
     primes(pipeline[0]);
+    close(pipeline[0]);
   }else{
     close(pipeline[0]);
     int n;
@@ -31,29 +30,27 @@ primes(int fd)
       if(n % p != 0){
         write(pipeline[1], &n, sizeof(int));
       }
-    }
-    
+    }  
     close(fd);
     close(pipeline[1]);
     wait(0);
-    exit(0);
   }  
+  exit(0);
 }
 
-int main()
+int
+main()
 {
   int pipeline[2];
-  if(pipe(pipeline) < 0){
-    fprintf(2, "pipe failed\n");
-    exit(1);
-  }
+  pipe(pipeline);
 
   if(fork() == 0){
     close(pipeline[1]);
     primes(pipeline[0]);
-  }else {
     close(pipeline[0]);
-    for(int i = 2; i <= 280; i++){
+    }else {
+    close(pipeline[0]);
+    for(int i = 2; i < 281; i++){
       write(pipeline[1], &i, sizeof(int));
     }
     close(pipeline[1]);
@@ -61,3 +58,4 @@ int main()
   }
   exit(0);
 }
+
