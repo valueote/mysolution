@@ -321,7 +321,9 @@ fork(void)
   acquire(&np->lock);
   np->state = RUNNABLE;
   release(&np->lock);
-
+  
+  np->mask = p->mask;
+  
   return pid;
 }
 

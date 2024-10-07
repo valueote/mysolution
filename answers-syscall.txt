@@ -1,0 +1,11 @@
+1. the usertrap function call the syscall.
+
+2. the value of p->trapframe->a7 is 0x7, whic represents the exec syscall num
+
+3. the previous mode that the cpu was in is user mode.
+
+4. the asm instruction is :lw a3,0(zero) # 0 <_entry-0x80000000>, the register for num is a
+
+5. the code give the kernel unused memory region.
+
+6. its name is initcode0000000000, its pid is 1;
