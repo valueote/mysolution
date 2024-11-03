@@ -118,31 +118,31 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 }
 
 pte_t *
-superwalk(pagetable_t pagetable, uint64 va, uint64 pa)
+superwalk(pagetable_t pagetable, uint64 va, int alloc)
 {
   if(va >= MAXVA)
-    panic("walk");
-
+    panic("superwalk");
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];
     if(*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte);
+#ifdef LAB_PGTBL
+      if(PTE_LEAF(*pte)) {
+        return pte;
+      }
+#endif
     } else {
-      if((pagetable = (pde_t*)kalloc()) == 0)
+      if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;
       memset(pagetable, 0, PGSIZE);
       if(level == 1){
-        *pte = (pa << 10) | PTE_V | PTE_R;
+        *pte = PA2PTE(pagetable) | PTE_V | PTE_R;
       }else{
         *pte = PA2PTE(pagetable) | PTE_V;
       }
-
     }
   }
-  // alloc
-  // final page >> 10
   return &pagetable[PX(0, va)];
-
 }
 
 
@@ -220,8 +220,8 @@ supermappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm
 {
   uint64 a, last;
   pte_t *pte;
-  //if((va % PGSIZE) != 0)
-   // panic("mappages: va not aligned");
+  if((va % PGSIZE) != 0)
+    panic("supermappages: va not aligned");
   if(pa % SUPERPGSIZE != 0)
     panic("supermappages: pa not aligned");
 
@@ -234,7 +234,7 @@ supermappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm
   a = va;
   last = va + size - SUPERPGSIZE;
   for(;;){
-    if((pte = superwalk(pagetable, a, pa)) == 0)
+    if((pte = superwalk(pagetable, a, 1)) == 0)
       return -1;
     if(*pte & PTE_V)
       panic("supermappages: remap");
@@ -320,16 +320,18 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
 
   if(newsz < oldsz)
     return oldsz;
+  oldsz = PGROUNDUP(oldsz);
   if(newsz - oldsz >= SUPERPGSIZE){
-    oldsz = SUPERPGROUNDUP(oldsz);
+    printf("oldsz before groundup %lu\n", oldsz);
     for(a = oldsz; a < newsz; a += sz){
-     sz = SUPERPGSIZE;
-     mem = superalloc();
-     if(mem == 0){
+      sz = SUPERPGSIZE;
+      mem = superalloc();
+      if(mem == 0){
        //uvmdealloc(pagetable, a, oldsz);
-       return 0;
-     }
+        return 0;
+      }
      memset(mem, 0, sz);
+     printf("try to map superpages, the oldsz is %lu, the newsz is %lu\n", oldsz, newsz);
      if(supermappages(pagetable, a, sz, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
        superfree(mem);
        //uvmdealloc(pagetable, a, oldsz);
@@ -338,8 +340,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
     }
     return newsz;
   }
-   oldsz = PGROUNDUP(oldsz);
-   for(a = oldsz; a < newsz; a += sz){
+  for(a = oldsz; a < newsz; a += sz){
      sz = PGSIZE;
      mem = kalloc();
      if(mem == 0){
@@ -425,7 +426,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   int szinc;
 
   for(i = 0; i < sz; i += szinc){
-    szinc = PGSIZE;
     szinc = PGSIZE;
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
