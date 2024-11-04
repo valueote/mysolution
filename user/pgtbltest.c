@@ -88,13 +88,15 @@ void
 supercheck(uint64 s)
 {
   pte_t last_pte = 0;
-
   for (uint64 p = s;  p < s + 512 * PGSIZE; p += PGSIZE) {
     pte_t pte = (pte_t) pgpte((void *) p);
-    if(pte == 0)
+    if(pte == 0){
+      printf("debug: the current pte is %p\n", (void*)pte);
       err("no pte");
+    }
     if ((uint64) last_pte != 0 && pte != last_pte) {
-        err("pte different");
+      printf("debug: the current pte is %p, the last pte is %p\n", (void*)PTE2PA(pte), (void*)PTE2PA(last_pte));
+      err("pte different");
     }
     if((pte & PTE_V) == 0 || (pte & PTE_R) == 0 || (pte & PTE_W) == 0){
       err("pte wrong");
