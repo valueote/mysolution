@@ -1,0 +1,5 @@
+Question 1: For every leaf page in the vmprint output, explain what it logically contains and what its permission bits are,
+and how it relates to the output of the earlier print_pgtbl() exercise above. Figure 3.4 in the xv6 book might be helpful,
+although note that the figure might have a slightly different set of pages than the process that's being inspected here.
+
+Question 2: Your job is to modify the xv6 kernel to use superpages. In particular, if a user program calls sbrk() with a size of 2 megabytes or more, and the newly created address range includes one or more areas that are two-megabyte-aligned and at least two megabytes in size, the kernel should use a single superpage (instead of hundreds of ordinary pages). You will receive full credit for this part of the lab if the superpg_test test case passes when running pgtbltest.

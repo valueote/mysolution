@@ -7,7 +7,6 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "fs.h"
-
 /*
  * the kernel's page table.
  */
@@ -237,6 +236,7 @@ supermappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm
 
 
 }
+
 // Remove npages of mappings starting from va. va must be
 // page-aligned. The mappings must exist.
 // Optionally free the physical memory.
@@ -252,20 +252,17 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
   //printf("debug: uvmunmap: va + npages * PGSIZE is %lu\n", va + npages * PGSIZE);
   for(a = va; a < va + npages*PGSIZE; a += sz){
     sz = PGSIZE;
-    if(!((pte = walk(pagetable, a, 0)) == 0) && !((*pte & PTE_V) == 0) && !(PTE_FLAGS(*pte) == PTE_V)
-){
+    if(!((pte = walk(pagetable, a, 0)) == 0) && !((*pte & PTE_V) == 0) && !(PTE_FLAGS(*pte) == PTE_V) && walk(pagetable, a, 0) != superwalk(pagetable, a, 0)) {
       if(do_free){
         uint64 pa = PTE2PA(*pte);
         kfree((void*)pa);
       }
     }else if(!((pte = walk(pagetable, SUPERPGROUNDUP(a), 0)) == 0) && !((*pte & PTE_V) == 0) && !(PTE_FLAGS(*pte) == PTE_V)){
       if(do_free){
-       //printf("a before the round is %lu\n", a);
+        a = SUPERPGROUNDUP(a);
         uint64 pa = PTE2PA(*pte);
         superfree((void*)pa);
-        //printf("debug: the current a is %lu ", SUPERPGROUNDUP(a));
-        a = SUPERPGROUNDUP(a) + SUPERPGSIZE - PGSIZE;
-        //printf("the next a is %lu\n", a + PGSIZE);
+        a += SUPERPGSIZE - PGSIZE;
       }
     }else{
       if((pte = walk(pagetable, a, 0)) == 0){
@@ -440,7 +437,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
         printf("uvmcopy: supermappages fail\n");
       }
       printf("the current i is %lu, the next i is %lu\n", i, i + SUPERPGSIZE );
-      i = i + SUPERPGSIZE - PGSIZE;
+      i += SUPERPGSIZE - PGSIZE;
     }else{
       panic("uvmcopy: fail");
     }
