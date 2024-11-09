@@ -99,7 +99,10 @@ supercheck(uint64 s)
       err("pte different");
     }
     if((pte & PTE_V) == 0 || (pte & PTE_R) == 0 || (pte & PTE_W) == 0){
+      printf("debug: the current p is %lu\n", p);
+      printf("debug: the current pte is %p, the last pte is %p\n", (void*)PTE2PA(pte), (void*)PTE2PA(last_pte));
       err("pte wrong");
+
     }
     last_pte = pte;
   }

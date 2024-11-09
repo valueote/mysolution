@@ -227,7 +227,7 @@ supermappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm
       panic("supermappages: remap");
     if(*pte & PTE_R)
       panic("supermappages: not super");
-    *pte = PA2PTE(pa) | perm | PTE_V | PTE_R;
+    *pte = PA2PTE(pa)| PTE_V | PTE_R | PTE_S | perm;
     if(a == last)
       break;
     a += SUPERPGSIZE;
@@ -252,24 +252,24 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
   //printf("debug: uvmunmap: va + npages * PGSIZE is %lu\n", va + npages * PGSIZE);
   for(a = va; a < va + npages*PGSIZE; a += sz){
     sz = PGSIZE;
-    if(!((pte = walk(pagetable, a, 0)) == 0) && !((*pte & PTE_V) == 0) && !(PTE_FLAGS(*pte) == PTE_V) && walk(pagetable, a, 0) != superwalk(pagetable, a, 0)) {
-      if(do_free){
-        uint64 pa = PTE2PA(*pte);
+    if((pte = walk(pagetable, a, 0)) == 0)
+      panic("uvmunmap: walk");
+    if((*pte & PTE_V) == 0){
+      if((pte = walk(pagetable,SUPERPGROUNDUP(a), 0)) == 0)
+        panic("uvmunmap: not mapped");
+      a = SUPERPGROUNDUP(a);
+    }
+    if(PTE_FLAGS(*pte) == PTE_V)
+      panic("uvmunmap: not a leaf");
+    if(do_free){
+      uint64 pa = PTE2PA(*pte);
+      if(PTE_FLAGS(*pte) & PTE_S){
+        printf("debug: uvmunmap: hit flags %lu\n", a);
+        superfree((void*)pa);
+        sz = SUPERPGSIZE;
+      }else{
         kfree((void*)pa);
       }
-    }else if(!((pte = walk(pagetable, SUPERPGROUNDUP(a), 0)) == 0) && !((*pte & PTE_V) == 0) && !(PTE_FLAGS(*pte) == PTE_V)){
-      if(do_free){
-        a = SUPERPGROUNDUP(a);
-        uint64 pa = PTE2PA(*pte);
-        superfree((void*)pa);
-        a += SUPERPGSIZE - PGSIZE;
-      }
-    }else{
-      if((pte = walk(pagetable, a, 0)) == 0){
-        printf("debug: walk: current a is %lu\n", a);
-        panic("uvmunmap: walk");
-      }
-      panic("uvmunmap: fail");
     }
     *pte = 0;
   }
@@ -326,7 +326,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
         return 0;
       }
      memset(mem, 0, sz);
-    // printf("debug: uvmalloc: try to map va %lu\n", a);
+     printf("debug: uvmalloc: try to map va %lu\n", a);
      if(supermappages(pagetable, a, sz, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
        superfree(mem);
        uvmdealloc(pagetable, a, oldsz);
@@ -417,10 +417,29 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   int szinc;
 
   for(i = 0; i < sz; i += szinc){
-    szinc = PGSIZE;
-    if(!((pte = walk(old, i, 0)) == 0) && !((*pte & PTE_V) == 0) && walk(old, i, 0) != superwalk(old, i, 0)){
-      pa = PTE2PA(*pte);
-      flags = PTE_FLAGS(*pte);
+    if((pte = walk(old, i, 0)) == 0)
+      panic("uvmcopy: pte should exist");
+    if((*pte & PTE_V) == 0){
+      if((pte = walk(old, SUPERPGROUNDUP(i), 0)) == 0)
+        panic("uvmcopy: page not present");
+      i = SUPERPGROUNDUP(i);
+      printf("debug: uvmcopy: update i %lu\n", i);
+    }
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+    if(flags &  PTE_S){
+      printf("debug: uvmcopy: hit flags, current va is %lu \n", i);
+      szinc = SUPERPGSIZE;
+      if((mem = superalloc()) == 0)
+        goto err;
+      memmove(mem, (char*)pa, SUPERPGSIZE);
+      if(supermappages(new, i, SUPERPGSIZE, (uint64)mem, flags) != 0){
+        superfree(mem);
+        goto err;
+      }
+    }else{
+      printf("debug: uvmcopy: did not hit flags, current va is %lu \n", i);
+      szinc = PGSIZE;
       if((mem = kalloc()) == 0)
         goto err;
       memmove(mem, (char*)pa, PGSIZE);
@@ -428,25 +447,11 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
         kfree(mem);
         goto err;
       }
-    }else if(!((pte = walk(old,SUPERPGROUNDUP(i),0)) == 0) && !((*pte & PTE_V) == 0)){
-      i = SUPERPGROUNDUP(i);
-      mem = superalloc();
-      memmove(mem, (char*)PTE2PA(*pte), SUPERPGSIZE);
-      if(supermappages(new, i, SUPERPGSIZE, (uint64)mem, PTE_FLAGS(*pte)) != 0){
-        superfree(mem);
-        printf("uvmcopy: supermappages fail\n");
-      }
-      printf("the current i is %lu, the next i is %lu\n", i, i + SUPERPGSIZE );
-      i += SUPERPGSIZE - PGSIZE;
-    }else{
-      panic("uvmcopy: fail");
     }
-
   }
   return 0;
 
  err:
-  printf("enter err\n");
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }
