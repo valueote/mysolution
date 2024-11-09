@@ -264,7 +264,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     if(do_free){
       uint64 pa = PTE2PA(*pte);
       if(PTE_FLAGS(*pte) & PTE_S){
-        printf("debug: uvmunmap: hit flags %lu\n", a);
+        //printf("debug: uvmunmap: hit flags %lu\n", a);
         superfree((void*)pa);
         sz = SUPERPGSIZE;
       }else{
@@ -325,8 +325,8 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
         uvmdealloc(pagetable, a, oldsz);
         return 0;
       }
-     memset(mem, 0, sz);
-     printf("debug: uvmalloc: try to map va %lu\n", a);
+      memset(mem, 0, sz);
+      printf("debug: uvmalloc: try to map va %lu\n", a);
      if(supermappages(pagetable, a, sz, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
        superfree(mem);
        uvmdealloc(pagetable, a, oldsz);
@@ -349,8 +349,8 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
         kfree(mem);
         uvmdealloc(pagetable, a, oldsz);
         return 0;
+      }
     }
-  }
   }
   return newsz;
 }
@@ -423,12 +423,12 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       if((pte = walk(old, SUPERPGROUNDUP(i), 0)) == 0)
         panic("uvmcopy: page not present");
       i = SUPERPGROUNDUP(i);
-      printf("debug: uvmcopy: update i %lu\n", i);
+      //printf("debug: uvmcopy: update i %lu\n", i);
     }
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     if(flags &  PTE_S){
-      printf("debug: uvmcopy: hit flags, current va is %lu \n", i);
+    //  printf("debug: uvmcopy: hit flags, current va is %lu \n", i);
       szinc = SUPERPGSIZE;
       if((mem = superalloc()) == 0)
         goto err;
@@ -438,7 +438,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
         goto err;
       }
     }else{
-      printf("debug: uvmcopy: did not hit flags, current va is %lu \n", i);
+     // printf("debug: uvmcopy: did not hit flags, current va is %lu \n", i);
       szinc = PGSIZE;
       if((mem = kalloc()) == 0)
         goto err;
