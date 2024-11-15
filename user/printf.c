@@ -6,6 +6,11 @@
 
 static char digits[] = "0123456789ABCDEF";
 
+void
+backtrace(){
+  printf("backtrace ss:\n");
+}
+
 static void
 putc(int fd, char c)
 {
@@ -155,3 +160,4 @@ printf(const char *fmt, ...)
   va_start(ap, fmt);
   vprintf(1, fmt, ap);
 }
+

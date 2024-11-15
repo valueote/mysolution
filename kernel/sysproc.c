@@ -6,6 +6,21 @@
 #include "spinlock.h"
 #include "proc.h"
 
+void
+backtrace(){
+  uint64 fp = r_fp();
+  uint64 pg = PGROUNDDOWN(fp);
+  printf("backtrace:\n");
+  printf("%p\n", (void*)*(uint64*)(fp - 8));
+  uint64 pfp = *(uint64*)(fp -16);
+  while(pfp < pg+PGSIZE){
+    printf("%p\n", (void*)*(uint64*)(pfp - 8));
+    fp = pfp;
+    pfp = *(uint64*)(fp - 16);
+  }
+}
+
+
 uint64
 sys_exit(void)
 {
@@ -40,7 +55,6 @@ sys_sbrk(void)
 {
   uint64 addr;
   int n;
-
   argint(0, &n);
   addr = myproc()->sz;
   if(growproc(n) < 0)
@@ -67,6 +81,7 @@ sys_sleep(void)
     sleep(&ticks, &tickslock);
   }
   release(&tickslock);
+  backtrace();
   return 0;
 }
 
