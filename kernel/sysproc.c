@@ -108,6 +108,20 @@ sys_uptime(void)
 }
 
 uint64
+sys_sigalarm(void)
+{
+  int ticks;
+  uint64 addr;
+  struct proc* p = myproc();
+
+  argint(0, &ticks);
+  argaddr(1, &addr);
+  p->ticknum = ticks;
+  p->handler = addr;
+  return 0;
+}
+
+uint64
 sys_sigreturn(void)
 {
   return 0;
