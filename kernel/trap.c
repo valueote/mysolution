@@ -60,7 +60,7 @@ usertrap(void)
     // but we want to return to the next instruction.
     p->trapframe->epc += 4;
 
-    // an interrupt will change sepc, scause, and sstatus,
+        // an interrupt will change sepc, scause, and sstatus,
     // so enable only now that we're done with those registers.
     intr_on();
 
@@ -76,16 +76,21 @@ usertrap(void)
   if(killed(p))
     exit(-1);
 
+  if(which_dev == 2){
+     if(p->ticknum != 0){
+       p->tickpassed++;
+       if(p->tickpassed == p->ticknum && p->returned){
+         p->tickpassed = 0;
+         p->returned = 0;
+         p->save = *(p->trapframe);
+         p->trapframe->epc = p->handler;
+       }
+     }
+  }
+
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2){
-    if(p->ticknum != 0){
-      p->tickpassed++;
-      if(p->tickpassed >= p->ticknum){
-        p->tickpassed = 0;
-        p->trapframe->epc = p->handler;
-      }
-    }
-    yield();
+       yield();
   }
   usertrapret();
 }

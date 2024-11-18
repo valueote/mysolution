@@ -124,5 +124,39 @@ sys_sigalarm(void)
 uint64
 sys_sigreturn(void)
 {
-  return 0;
+  struct proc* p = myproc();
+
+  struct trapframe trapframe = myproc()->save;
+  p->trapframe->epc = trapframe.epc;
+  p->trapframe->a0 = trapframe.a0;
+  p->trapframe->a1 = trapframe.a1;
+  p->trapframe->a2 = trapframe.a2;
+  p->trapframe->a3 = trapframe.a3;
+  p->trapframe->a4 = trapframe.a4;
+  p->trapframe->a5 = trapframe.a5;
+  p->trapframe->a6 = trapframe.a6;
+  p->trapframe->a7 = trapframe.a7;
+  p->trapframe->ra = trapframe.ra;
+  p->trapframe->sp = trapframe.sp;
+  p->trapframe->s0 = trapframe.s0;
+  p->trapframe->s1 = trapframe.s1;
+  p->trapframe->s2 = trapframe.s2;
+  p->trapframe->s3 = trapframe.s3;
+  p->trapframe->s4 = trapframe.s4;
+  p->trapframe->s5 = trapframe.s5;
+  p->trapframe->s6 = trapframe.s6;
+  p->trapframe->s7 = trapframe.s7;
+  p->trapframe->s8 = trapframe.s8;
+  p->trapframe->s9 = trapframe.s9;
+  p->trapframe->s10 = trapframe.s10;
+  p->trapframe->s11 = trapframe.s11;
+  p->trapframe->t0 = trapframe.t0;
+  p->trapframe->t1 = trapframe.t1;
+  p->trapframe->t2 = trapframe.t2;
+  p->trapframe->t3 = trapframe.t3;
+  p->trapframe->t4 = trapframe.t4;
+  p->trapframe->t5 = trapframe.t5;
+  p->trapframe->t6 = trapframe.t6;
+  p->returned = 1;
+  return trapframe.a0;
 }

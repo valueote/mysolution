@@ -147,6 +147,7 @@ found:
   p->context.sp = p->kstack + PGSIZE;
   p->ticknum = 0;
   p->tickpassed = 0;
+  p->returned = 1;
   return p;
 }
 

@@ -107,4 +107,6 @@ struct proc {
   int ticknum;
   int tickpassed;
   uint64 handler;
+  int returned;
+  struct trapframe save;
 };

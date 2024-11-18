@@ -48,6 +48,7 @@ test0()
   int i;
   printf("test0 start\n");
   count = 0;
+  //sigalarm(2, handler);
   sigalarm(2, periodic);
   for(i = 0; i < 1000*500000; i++){
     if((i % 1000000) == 0)
@@ -103,6 +104,7 @@ test1()
     // occurred; another is that that registers may not be
     // restored correctly, causing i or j or the address ofj
     // to get an incorrect value.
+    printf("\nthe i is %u, the j is %u\n", i, j);
     printf("\ntest1 failed: foo() executed fewer times than it was called\n");
   } else {
     printf("test1 passed\n");
