@@ -225,7 +225,7 @@ supermappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm
       return -1;
     if(*pte & PTE_V)
       panic("supermappages: remap");
-    if(*pte & PTE_R)
+    if(!(*pte & PTE_S))
       panic("supermappages: not super");
     *pte = PA2PTE(pa)| PTE_V | PTE_R | PTE_S | perm;
     if(a == last)
