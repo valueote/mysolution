@@ -205,33 +205,15 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 int
 supermappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 {
-  uint64 a, last;
   pte_t *pte;
-  if((va % SUPERPGSIZE) != 0)
-    panic("supermappages: va not aligned");
-  if(pa % SUPERPGSIZE != 0)
-    panic("supermappages: pa not aligned");
-
-  if((size % SUPERPGSIZE) != 0)
-    panic("supermappages: size not aligned");
-
-  if(size == 0)
-    panic("supermappages: size");
-
-  a = va;
-  last = va + size - SUPERPGSIZE;
-  for(;;){
-    if((pte = superwalk(pagetable, a, 1)) == 0)
-      return -1;
-    if(*pte & PTE_V)
-      panic("supermappages: remap");
-    *pte = PA2PTE(pa)| PTE_V | PTE_R | PTE_S | perm;
-    if(a == last)
-      break;
-    a += SUPERPGSIZE;
-  }
+  if (va % SUPERPGSIZE != 0)
+    panic("mappages: superpage va not aligned");
+  if (size != SUPERPGSIZE)
+    panic("mappages: superpage size wrong");
+  if ((pte = superwalk(pagetable, va, 1)) == 0)
+    return -1;
+  *pte = PA2PTE(pa) | perm | PTE_V | PTE_S |PTE_R;
   return 0;
-
 
 }
 
