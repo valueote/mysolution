@@ -229,24 +229,30 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 
   if((va % PGSIZE) != 0)
     panic("uvmunmap: not aligned");
-  //printf("debug: uvmunmap: va + npages * PGSIZE is %lu\n", va + npages * PGSIZE);
+
   for(a = va; a < va + npages*PGSIZE; a += sz){
-    sz = PGSIZE;
+
     if((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
-    if((*pte & PTE_V) == 0){
+    if((*pte & PTE_V) == 0) {
+      printf("va=%ld pte=%ld\n", a, *pte);
       panic("uvmunmap: not mapped");
     }
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
-
-    uint64 pa = PTE2PA(*pte);
-    if(PTE_FLAGS(*pte) & PTE_S){
+    if(*pte & PTE_S){
+      sz = SUPERPGSIZE;
+      if(do_free){
+        uint64 pa = PTE2PA(*pte);
         superfree((void*)pa);
-        sz = SUPERPGSIZE;
-      }else if(do_free){
-        kfree((void*)pa);
       }
+    } else {
+      sz = PGSIZE;
+      if(do_free){
+        uint64 pa = PTE2PA(*pte);
+        kfree((void *)pa);
+      }
+    }
     *pte = 0;
   }
 }
