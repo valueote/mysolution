@@ -333,6 +333,36 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
   return newsz;
 
 }
+
+uint64
+uvmsuperalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
+{
+  char *mem;
+  uint64 a;
+  int sz;
+
+  if(newsz < oldsz)
+    return oldsz;
+
+  oldsz = PGROUNDUP(oldsz);
+  for(a = oldsz; a < newsz; a += sz){
+      sz = SUPERPGSIZE;
+      mem = superalloc();
+    if(mem == 0){
+      uvmdealloc(pagetable, a, oldsz);
+      return 0;
+    }
+    memset(mem, 0, sz);
+    if(supermappages(pagetable, a, sz, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
+      superfree(mem);
+      uvmdealloc(pagetable, a, oldsz);
+      return 0;
+    }
+  }
+  return newsz;
+
+}
+
 // Deallocate user pages to bring the process size from oldsz to
 // newsz.  oldsz and newsz need not be page-aligned, nor does newsz
 // need to be less than oldsz.  oldsz can be larger than the actual
@@ -399,15 +429,11 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0){
-      if((pte = walk(old, SUPERPGROUNDUP(i), 0)) == 0)
         panic("uvmcopy: page not present");
-      i = SUPERPGROUNDUP(i);
-      //printf("debug: uvmcopy: update i %lu\n", i);
     }
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     if(flags &  PTE_S){
-    //  printf("debug: uvmcopy: hit flags, current va is %lu \n", i);
       szinc = SUPERPGSIZE;
       if((mem = superalloc()) == 0)
         goto err;
@@ -417,7 +443,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
         goto err;
       }
     }else{
-     // printf("debug: uvmcopy: did not hit flags, current va is %lu \n", i);
       szinc = PGSIZE;
       if((mem = kalloc()) == 0)
         goto err;
