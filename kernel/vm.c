@@ -327,19 +327,20 @@ uvmsuperalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
   uint64 a;
   int sz;
 
-  if(newsz < oldsz)
+  if (newsz < oldsz)
     return oldsz;
 
-  oldsz = PGROUNDUP(oldsz);
-  for(a = oldsz; a < newsz; a += sz){
-      sz = SUPERPGSIZE;
-      mem = superalloc();
-    if(mem == 0){
+  for (a = oldsz; a < newsz; a += sz)
+  {
+    sz = SUPERPGSIZE;
+    mem = superalloc();
+    if (mem == 0)
+    {
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
-    memset(mem, 0, sz);
-    if(supermappages(pagetable, a, sz, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
+    if (supermappages(pagetable, a, sz, (uint64)mem, PTE_R | PTE_U | xperm) != 0)
+    {
       superfree(mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;
