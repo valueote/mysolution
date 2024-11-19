@@ -255,9 +255,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     if((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
     if((*pte & PTE_V) == 0){
-      if((pte = walk(pagetable,SUPERPGROUNDUP(a), 0)) == 0)
-        panic("uvmunmap: not mapped");
-      a = SUPERPGROUNDUP(a);
+      panic("uvmunmap: not mapped");
     }
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
@@ -316,43 +314,26 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
 
   if(newsz < oldsz)
     return oldsz;
-  if(newsz - oldsz >= SUPERPGSIZE){
-    oldsz = SUPERPGROUNDUP(oldsz);
-    for(a = oldsz; a < SUPERPGROUNDUP(newsz); a += sz){
-      sz = SUPERPGSIZE;
-      mem = superalloc();
-      if(mem == 0){
-        uvmdealloc(pagetable, a, oldsz);
-        return 0;
-      }
-      memset(mem, 0, sz);
-      printf("debug: uvmalloc: try to map va %lu\n", a);
-     if(supermappages(pagetable, a, sz, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
-       superfree(mem);
-       uvmdealloc(pagetable, a, oldsz);
-       return 0;
-     }
-    }
-  }else {
-    oldsz = PGROUNDUP(oldsz);
-    for(a = oldsz; a < newsz; a += sz){
+
+  oldsz = PGROUNDUP(oldsz);
+  for(a = oldsz; a < newsz; a += sz){
       sz = PGSIZE;
       mem = kalloc();
-      if(mem == 0){
-        uvmdealloc(pagetable, a, oldsz);
-        return 0;
-      }
+    if(mem == 0){
+      uvmdealloc(pagetable, a, oldsz);
+      return 0;
+    }
 #ifndef LAB_SYSCALL
-      memset(mem, 0, sz);
+    memset(mem, 0, sz);
 #endif
-      if(mappages(pagetable, a, sz, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
-        kfree(mem);
-        uvmdealloc(pagetable, a, oldsz);
-        return 0;
-      }
+    if(mappages(pagetable, a, sz, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
+      kfree(mem);
+      uvmdealloc(pagetable, a, oldsz);
+      return 0;
     }
   }
   return newsz;
+
 }
 // Deallocate user pages to bring the process size from oldsz to
 // newsz.  oldsz and newsz need not be page-aligned, nor does newsz
