@@ -167,6 +167,7 @@ freeproc(struct proc *p)
     kfree((void*)p->usys);
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+  p->usys = 0;
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -277,29 +278,31 @@ int
 growproc(int n)
 {
   uint64 sz;
-  uint64 newsz;
   struct proc *p = myproc();
 
   sz = p->sz;
-  newsz = sz + n;
+  uint64 oldsz = sz;
+  uint64 newsz=SUPERPGROUNDUP(sz);
+  int spgnum = n/SUPERPGSIZE;
+
   if(n > 0){
-    uint64 spsz = SUPERPGROUNDUP(sz);
-    int spgnum = n / SUPERPGSIZE;
     if(spgnum > 0 && sz<newsz){
-      if((sz = uvmalloc(p->pagetable, sz, spsz, PTE_W)) == 0) {
+      if((newsz = uvmalloc(p->pagetable, sz, newsz, PTE_W)) == 0) {
         return -1;
       }
+      sz = newsz;
       p->sz = sz;
     }
     if (spgnum > 0 && spgnum < 5){
-      if ((sz = uvmsuperalloc(p->pagetable, sz, sz + spgnum * SUPERPGSIZE, PTE_W)) == 0)
+      if ((newsz = uvmsuperalloc(p->pagetable, sz, sz + spgnum * SUPERPGSIZE, PTE_W)) == 0)
       {
         return -1;
       }
+      sz = newsz;
+      //与上同理
       p->sz = sz;
     }
-
-    if((sz = uvmalloc(p->pagetable, sz, newsz, PTE_W)) == 0) {
+    if((sz = uvmalloc(p->pagetable, sz, oldsz + n, PTE_W)) == 0) {
       return -1;
     }
   } else if(n < 0){
@@ -308,6 +311,7 @@ growproc(int n)
   p->sz = sz;
   return 0;
 }
+
 
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.

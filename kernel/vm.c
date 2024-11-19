@@ -205,33 +205,15 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 int
 supermappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 {
-  uint64 a, last;
   pte_t *pte;
-  if((va % SUPERPGSIZE) != 0)
-    panic("supermappages: va not aligned");
-  if(pa % SUPERPGSIZE != 0)
-    panic("supermappages: pa not aligned");
-
-  if((size % SUPERPGSIZE) != 0)
-    panic("supermappages: size not aligned");
-
-  if(size == 0)
-    panic("supermappages: size");
-
-  a = va;
-  last = va + size - SUPERPGSIZE;
-  for(;;){
-    if((pte = superwalk(pagetable, a, 1)) == 0)
-      return -1;
-    if(*pte & PTE_V)
-      panic("supermappages: remap");
-    *pte = PA2PTE(pa)| PTE_V | PTE_R | PTE_S | perm;
-    if(a == last)
-      break;
-    a += SUPERPGSIZE;
-  }
+  if (va % SUPERPGSIZE != 0)
+    panic("mappages: superpage va not aligned");
+  if (size != SUPERPGSIZE)
+    panic("mappages: superpage size wrong");
+  if ((pte = superwalk(pagetable, va, 1)) == 0)
+    return -1;
+  *pte = PA2PTE(pa) | perm | PTE_V | PTE_S |PTE_R;
   return 0;
-
 
 }
 
@@ -247,24 +229,30 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 
   if((va % PGSIZE) != 0)
     panic("uvmunmap: not aligned");
-  //printf("debug: uvmunmap: va + npages * PGSIZE is %lu\n", va + npages * PGSIZE);
+
   for(a = va; a < va + npages*PGSIZE; a += sz){
-    sz = PGSIZE;
+
     if((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
-    if((*pte & PTE_V) == 0){
+    if((*pte & PTE_V) == 0) {
+      printf("va=%ld pte=%ld\n", a, *pte);
       panic("uvmunmap: not mapped");
     }
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
-
-    uint64 pa = PTE2PA(*pte);
-    if(PTE_FLAGS(*pte) & PTE_S){
+    if(*pte & PTE_S){
+      sz = SUPERPGSIZE;
+      if(do_free){
+        uint64 pa = PTE2PA(*pte);
         superfree((void*)pa);
-        sz = SUPERPGSIZE;
-      }else if(do_free){
-        kfree((void*)pa);
       }
+    } else {
+      sz = PGSIZE;
+      if(do_free){
+        uint64 pa = PTE2PA(*pte);
+        kfree((void *)pa);
+      }
+    }
     *pte = 0;
   }
 }
@@ -339,19 +327,20 @@ uvmsuperalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
   uint64 a;
   int sz;
 
-  if(newsz < oldsz)
+  if (newsz < oldsz)
     return oldsz;
 
-  oldsz = PGROUNDUP(oldsz);
-  for(a = oldsz; a < newsz; a += sz){
-      sz = SUPERPGSIZE;
-      mem = superalloc();
-    if(mem == 0){
+  for (a = oldsz; a < newsz; a += sz)
+  {
+    sz = SUPERPGSIZE;
+    mem = superalloc();
+    if (mem == 0)
+    {
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
-    memset(mem, 0, sz);
-    if(supermappages(pagetable, a, sz, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
+    if (supermappages(pagetable, a, sz, (uint64)mem, PTE_R | PTE_U | xperm) != 0)
+    {
       superfree(mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;

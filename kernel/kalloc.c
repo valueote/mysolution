@@ -9,8 +9,9 @@
 #include "riscv.h"
 #include "defs.h"
 
+#define SUPERPAGE_MEM 8 * 512 * 4 * 1024
+
 void freerange(void *pa_start, void *pa_end);
-void superrange(void *pa_start, void *pa_end);
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
@@ -21,41 +22,29 @@ struct run {
 struct {
   struct spinlock lock;
   struct run *freelist;
+  struct run *superlist;
 } kmem;
-
-struct {
-  struct spinlock lock;
-  struct run *freelist;
-} supermem;
 
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
-  initlock(&supermem.lock, "supermem");
-  //superrange(end, end + 5 * SUPERPGSIZE);
-  //freerange(end + 5 * SUPERPGSIZE, (void*)PHYSTOP);
-  freerange(end, (void*)PHYSTOP - 10 * SUPERPGSIZE);
-  superrange((void*)PHYSTOP - 10 * SUPERPGSIZE, (void*)PHYSTOP);
+  freerange(end, (void*)PHYSTOP);
 }
 
 void
 freerange(void *pa_start, void *pa_end)
 {
   char *p;
-  p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+  p = (char *)PGROUNDUP((uint64)pa_start);
+  for (; p + PGSIZE <= (char *)(pa_end - SUPERPAGE_MEM); p += PGSIZE)
     kfree(p);
+  p = (char *)SUPERPGROUNDUP((uint64)p);
+  for (; p + SUPERPGSIZE <= (char *)pa_end; p += SUPERPGSIZE)
+    superfree(p);
 }
 
-void
-superrange(void *pa_start, void *pa_end){
-  char* p;
-  p = (char*)SUPERPGROUNDUP((uint64)pa_start);
-  for(; p + SUPERPGSIZE <= (char*)pa_end; p += SUPERPGSIZE){
-    superfree(p);
-  }
-}
+
 // Free the page of physical memory pointed at by pa,
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
@@ -111,10 +100,10 @@ superfree(void *pa)
 
   r = (struct run*)pa;
 
-  acquire(&supermem.lock);
-  r->next = supermem.freelist;
-  supermem.freelist = r;
-  release(&supermem.lock);
+  acquire(&kmem.lock);
+  r->next = kmem.superlist;
+  kmem.superlist = r;
+  release(&kmem.lock);
 }
 
 void *
@@ -122,11 +111,11 @@ superalloc(void)
 {
   struct run *r;
 
-  acquire(&supermem.lock);
-  r = supermem.freelist;
+  acquire(&kmem.lock);
+  r = kmem.superlist;
   if(r)
-    supermem.freelist = r->next;
-  release(&supermem.lock);
+    kmem.superlist = r->next;
+  release(&kmem.lock);
 
   if(r)
     memset((char*)r, 5, SUPERPGSIZE); // fill with junk
