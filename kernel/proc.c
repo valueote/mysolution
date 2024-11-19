@@ -165,6 +165,7 @@ freeproc(struct proc *p)
   p->trapframe = 0;
   if(p->usys)
     kfree((void*)p->usys);
+  p->usys = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
