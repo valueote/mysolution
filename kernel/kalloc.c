@@ -15,6 +15,7 @@ extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
 struct run {
+  int count;
   struct run *next;
 };
 
@@ -51,10 +52,15 @@ kfree(void *pa)
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
+  r = (struct run*)pa;
+  if(r->count){
+    r->count--;
+    return;
+  }
   // Fill with junk to catch dangling refs.
+
   memset(pa, 1, PGSIZE);
 
-  r = (struct run*)pa;
 
   acquire(&kmem.lock);
   r->next = kmem.freelist;
@@ -72,8 +78,10 @@ kalloc(void)
 
   acquire(&kmem.lock);
   r = kmem.freelist;
-  if(r)
+  if(r){
+    r->count++;
     kmem.freelist = r->next;
+  }
   release(&kmem.lock);
 
   if(r)
