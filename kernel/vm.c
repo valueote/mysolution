@@ -15,6 +15,7 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
+extern int pagecount[];
 // Make a direct-map page table for the kernel.
 pagetable_t
 kvmmake(void)
@@ -330,6 +331,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if(mappages(new, i, PGSIZE, pa, flags) != 0){
       goto err;
     }
+    pagecount[pa / PGSIZE] += 1;
   }
   return 0;
 

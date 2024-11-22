@@ -77,14 +77,17 @@ usertrap(void)
     va = PGROUNDDOWN(r_stval());
     pte = walk(p->pagetable, va, 0);
     if(*pte & PTE_COW){
-      if((mem = kalloc()) == 0)
+      if((mem = kalloc()) == 0){
         setkilled(p);
-      pa = PTE2PA(*pte);
-      memmove(mem, (char*)pa, PGSIZE);
-      flags = (PTE_FLAGS(*pte) | PTE_W) & ~PTE_COW;
-      if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, flags) != 0){
-        kfree(mem);
-        setkilled(p);
+        printf("page fault! no mem!\n");
+      }else{
+        pa = PTE2PA(*pte);
+        memmove(mem, (char*)pa, PGSIZE);
+        flags = (PTE_FLAGS(*pte) | PTE_W) & ~PTE_COW;
+        if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, flags) != 0){
+          kfree(mem);
+          setkilled(p);
+        }
       }
     }else{
       printf("page fault!\n");
