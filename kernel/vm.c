@@ -12,10 +12,8 @@
 pagetable_t kernel_pagetable;
 
 extern char etext[];  // kernel.ld sets this to end of kernel code.
-
 extern char trampoline[]; // trampoline.S
 
-extern int pagecount[];
 // Make a direct-map page table for the kernel.
 pagetable_t
 kvmmake(void)
@@ -328,10 +326,10 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if(*pte & PTE_W)
       *pte = (*pte & ~PTE_W) | PTE_COW;
     flags = PTE_FLAGS(*pte);
+    kpgcnt((void*)pa, 1);
     if(mappages(new, i, PGSIZE, pa, flags) != 0){
       goto err;
     }
-    pagecount[pa / PGSIZE] += 1;
   }
   return 0;
 
@@ -361,16 +359,41 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
   pte_t *pte;
+  char* mem;
+  uint64 flags;
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
     if(va0 >= MAXVA)
       return -1;
     pte = walk(pagetable, va0, 0);
-    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 ||
-       (*pte & PTE_W) == 0)
+
+    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
       return -1;
+
     pa0 = PTE2PA(*pte);
+    if((*pte & PTE_W) == 0){
+      if((*pte & PTE_COW) == 0)
+        return -1;
+
+      if((mem = kalloc()) == 0){
+        panic("copyout: COW: no mem");
+        return -1;
+      }
+
+      memmove(mem, (char*)pa0, PGSIZE);
+      flags = (PTE_FLAGS(*pte) | PTE_W) & ~PTE_COW;
+
+      if(mappages(pagetable, va0, PGSIZE, (uint64)mem, flags) != 0){
+          kfree(mem);
+          uvmunmap(pagetable, va0, PGSIZE, 1);
+          return -1;
+      }
+
+      kfree((char*)pa0);
+      pa0 = (uint64)mem;
+    }
+
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;

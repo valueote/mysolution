@@ -75,22 +75,31 @@ usertrap(void)
     uint flags;
 
     va = PGROUNDDOWN(r_stval());
+    if(va >= MAXVA){
+      setkilled(p);
+      exit(-1);
+    }
     pte = walk(p->pagetable, va, 0);
     if(*pte & PTE_COW){
-      if((mem = kalloc()) == 0){
+      pa = PTE2PA(*pte);
+      if(kpgcnt((void*)pa, 0) == 1){
+        *pte = (*pte | PTE_W) & ~PTE_COW;
+      }else if((mem = kalloc()) == 0){
         setkilled(p);
         printf("page fault! no mem!\n");
       }else{
-        pa = PTE2PA(*pte);
         memmove(mem, (char*)pa, PGSIZE);
         flags = (PTE_FLAGS(*pte) | PTE_W) & ~PTE_COW;
         if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, flags) != 0){
           kfree(mem);
+          uvmunmap(p->pagetable, 0, p->sz / PGSIZE, 1);
           setkilled(p);
         }
+        kfree((void*)pa);
       }
     }else{
-      printf("page fault!\n");
+      printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
       setkilled(p);
     }
   }else {
