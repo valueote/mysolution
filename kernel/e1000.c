@@ -103,13 +103,13 @@ e1000_transmit(char *buf, int len)
   //
   printf("call from e1000_transmit!\n");
 
-  acquire(&e1000_lock);
+  //acquire(&e1000_lock);
   //read the index
   uint64 index = regs[E1000_TDT];
   struct tx_desc *td = tx_ring + index;
   //check overflow
   if(td->status != E1000_TXD_STAT_DD){
-    release(&e1000_lock);
+    //release(&e1000_lock);
     return -1;
   }else{
     if(td->addr)
@@ -121,7 +121,7 @@ e1000_transmit(char *buf, int len)
   td->cmd = E1000_TXD_CMD_EOP | E1000_TXD_CMD_RS;
   // update postion
   regs[E1000_TDT] = (index + 1) % TX_RING_SIZE;
-  release(&e1000_lock);
+  //release(&e1000_lock);
   return 0;
 }
 
@@ -138,23 +138,21 @@ e1000_recv(void)
 
   acquire(&e1000_lock);
   uint64 index = (regs[E1000_RDT] + 1) % RX_RING_SIZE;
-  struct rx_desc *rd = rx_ring + index;
-
-  if(rd->status != E1000_RXD_STAT_DD){
-    release(&e1000_lock);
-    printf("recv desc have not done\n");
-    return;
+  for(int i = index;; i = (regs[E1000_RDT] + 1) % RX_RING_SIZE){
+    struct rx_desc *rd = rx_ring + i;
+    if(rd->status == E1000_RXD_STAT_DD){
+      release(&e1000_lock);
+      printf("recv desc have not done\n");
+      return;
+    }
+    net_rx((char*)rd->addr, (int)rd->length);
+    char* buf = (char*)kalloc();
+    rd->addr= (uint64)buf;
+    rd->status = 0;
+    regs[E1000_RDT] = i;
   }
-
-  net_rx((char*)rd->addr, (int)rd->length);
-
-  char* buf = (char*)kalloc();
-  rd->addr= (uint64)buf;
-  rd->status = 0;
-
-  regs[E1000_RDT] = index;
-  release(&e1000_lock);
-  e1000_intr();
+  //release(&e1000_lock);
+  //e1000_intr();
 }
 
 void
