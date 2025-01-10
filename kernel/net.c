@@ -10,6 +10,7 @@
 #include "file.h"
 #include "net.h"
 
+#define UDP_PORT_NUM 16
 // xv6's ethernet and IP addresses
 static uint8 local_mac[ETHADDR_LEN] = { 0x52, 0x54, 0x00, 0x12, 0x34, 0x56 };
 static uint32 local_ip = MAKE_IP_ADDR(10, 0, 2, 15);
@@ -18,6 +19,17 @@ static uint32 local_ip = MAKE_IP_ADDR(10, 0, 2, 15);
 static uint8 host_mac[ETHADDR_LEN] = { 0x52, 0x55, 0x0a, 0x00, 0x02, 0x02 };
 
 static struct spinlock netlock;
+
+struct ports_packets{
+  int port;
+  int front;
+  int tail;
+  struct proc *p;
+  char* que[16];
+};
+
+static struct ports_packets *udp_ports_packets[UDP_PORT_NUM];
+static int port_count = 0;
 
 void
 netinit(void)
@@ -37,8 +49,32 @@ sys_bind(void)
   //
   // Your code here.
   //
+  acquire(&netlock);
+  if(port_count > 15){
+    printf("sys_bind: udp port full\n");
+    release(&netlock);
+    return -1;
+  }
 
-  return -1;
+  struct ports_packets *newpp = kalloc();
+  int port;
+
+  if(newpp == 0){
+    printf("sys_bind: kalloc failed\n");
+    release(&netlock);
+    return -1;
+  }
+
+  argint(0, &port);
+
+  newpp->port = port;
+  newpp->front = 0;
+  newpp->tail = 0;
+
+  udp_ports_packets[port_count] = newpp;
+  port_count++;
+  release(&netlock);
+  return 0;
 }
 
 //
@@ -52,7 +88,6 @@ sys_unbind(void)
   //
   // Optional: Your code here.
   //
-
   return 0;
 }
 
@@ -77,6 +112,70 @@ sys_recv(void)
   //
   // Your code here.
   //
+  struct proc *p = myproc();
+  int dport;
+  uint64 srcaddr;
+  uint64 sportaddr;
+  uint64 bufaddr;
+  int maxlen;
+  struct ports_packets *ps_ps = 0;
+  int front;
+  char* packet;
+
+  argint(0, &dport);
+  argaddr(1, &srcaddr);
+  argaddr(2, &sportaddr);
+  argaddr(3, &bufaddr);
+  argint(4, &maxlen);
+
+  int total = maxlen + sizeof(struct eth) + sizeof(struct ip) + sizeof(struct udp);
+  if(total > PGSIZE)
+    return -1;
+
+  acquire(&netlock);
+  for(int i = 0; i < port_count; i++){
+    if(udp_ports_packets[i]){
+      if(udp_ports_packets[i]->port == dport){
+        ps_ps = udp_ports_packets[i];
+        break;
+      }
+    }
+  }
+
+  if(ps_ps == 0){
+    return -1;
+  }
+
+  front = ps_ps->front;
+  while(ps_ps->front == ps_ps->tail){
+    sleep(ps_ps, &netlock);
+  }
+
+  packet = ps_ps->que[front];
+  struct eth *eth_hdr = (struct eth *)packet;
+  struct ip *ip_hdr = (struct ip *)(eth_hdr + 1);
+  struct udp *udp_hdr = (struct udp *)(ip_hdr + 1);
+  char* load = (char*)(udp_hdr + 1);
+
+  uint32 src = ntohl(ip_hdr->ip_src);
+  printf("sys_recv: the src ip is %x\n", ip_hdr->ip_src);
+  copyout(p->pagetable, srcaddr, (void*)&src, 4);
+
+  uint16 sport = ntohs(udp_hdr->sport);
+  copyout(p->pagetable, sportaddr, (void*)&sport, 2);
+
+  int flag = copyout(p->pagetable, bufaddr, load, maxlen);
+  int data_len = ntohs(udp_hdr->ulen) - 8;
+
+  ps_ps->front = (front + 1) % 16;
+  kfree((void*)ps_ps->que[front]);
+
+  release(&netlock);
+
+  if(flag == 0){
+    return data_len;
+  }
+
   return -1;
 }
 
@@ -191,7 +290,54 @@ ip_rx(char *buf, int len)
   //
   // Your code here.
   //
-  
+  struct eth *eth_hdr = (struct eth *)buf;
+  struct ip *ip_hdr = (struct ip *)(eth_hdr + 1);
+  struct udp *udp_hdr = (struct udp *)(ip_hdr + 1);
+  struct ports_packets *ps_ps;
+
+  uint16 dport = ntohs(udp_hdr->dport);
+
+  if(ip_hdr->ip_p != IPPROTO_UDP){
+    //drop
+    kfree((void *)buf);
+    return;
+  }
+
+  acquire(&netlock);
+  int binded = 0;
+  for(int i = 0; i < port_count; i++){
+    if(udp_ports_packets[i]){
+      if(udp_ports_packets[i]->port == dport){
+        ps_ps = udp_ports_packets[i];
+        binded = 1;
+        break;
+      }
+    }
+  }
+
+  if(binded){
+    int front = ps_ps->front;
+    int tail = ps_ps->tail;
+    if((tail + 1) % 16 == front){
+      //drop
+      kfree((void*) buf);
+
+      release(&netlock);
+      return;
+    }
+
+    ps_ps->que[tail] = buf;
+    ps_ps->tail = (tail + 1) % 16;
+    printf("ip_rx: put packet on the que\n");
+    printf("ip_rx: the src of the packet is %x\n", ntohl(ip_hdr->ip_src));
+    wakeup(ps_ps);
+  }else{
+    //drop
+    printf("ip_rx: %d haven't been binded , drop\n", dport);
+    kfree((void*)buf);
+  }
+
+  release(&netlock);
 }
 
 //
