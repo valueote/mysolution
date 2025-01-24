@@ -135,12 +135,10 @@ e1000_recv(void)
   // Create and deliver a buf for each packet (using net_rx()).
   //
   printf("call from e1000_recv!\n");
-  //acquire(&e1000_lock);
   uint64 index = (regs[E1000_RDT] + 1) % RX_RING_SIZE;
   for(int i = index;; i = (regs[E1000_RDT] + 1) % RX_RING_SIZE){
     struct rx_desc *rd = rx_ring + i;
     if(!(rd->status & E1000_RXD_STAT_DD)){
-      //release(&e1000_lock);
       return;
     }
     net_rx((char*)rd->addr, (int)rd->length);
@@ -149,7 +147,6 @@ e1000_recv(void)
     rd->status = 0;
     regs[E1000_RDT] = i;
   }
-  //e1000_intr();
 }
 
 void

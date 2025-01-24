@@ -11,6 +11,7 @@
 #include "net.h"
 
 #define UDP_PORT_NUM 16
+#define MAX_QUEUE_SIZE 16
 // xv6's ethernet and IP addresses
 static uint8 local_mac[ETHADDR_LEN] = { 0x52, 0x54, 0x00, 0x12, 0x34, 0x56 };
 static uint32 local_ip = MAKE_IP_ADDR(10, 0, 2, 15);
@@ -25,11 +26,12 @@ struct ports_packets{
   int front;
   int tail;
   struct proc *p;
-  char* que[16];
+  char* que[MAX_QUEUE_SIZE];
 };
 
-static struct ports_packets *udp_ports_packets[UDP_PORT_NUM];
+static struct ports_packets udp_ports_packets[UDP_PORT_NUM];
 static int port_count = 0;
+static int net_chan = 1;
 
 void
 netinit(void)
@@ -56,20 +58,14 @@ sys_bind(void)
     return -1;
   }
 
-  struct ports_packets *newpp = kalloc();
+  struct ports_packets newpp;
   int port;
-
-  if(newpp == 0){
-    printf("sys_bind: kalloc failed\n");
-    release(&netlock);
-    return -1;
-  }
 
   argint(0, &port);
 
-  newpp->port = port;
-  newpp->front = 0;
-  newpp->tail = 0;
+  newpp.port = port;
+  newpp.front = 0;
+  newpp.tail = 0;
 
   udp_ports_packets[port_count] = newpp;
   port_count++;
@@ -118,9 +114,10 @@ sys_recv(void)
   uint64 sportaddr;
   uint64 bufaddr;
   int maxlen;
-  struct ports_packets *ps_ps = 0;
+  struct ports_packets* ps_ps;
   int front;
   char* packet;
+  int binded = 0;
 
   argint(0, &dport);
   argaddr(1, &srcaddr);
@@ -134,23 +131,24 @@ sys_recv(void)
 
   acquire(&netlock);
   for(int i = 0; i < port_count; i++){
-    if(udp_ports_packets[i]){
-      if(udp_ports_packets[i]->port == dport){
-        ps_ps = udp_ports_packets[i];
+      if(udp_ports_packets[i].port == dport){
+        ps_ps = &udp_ports_packets[i];
+        binded = 1;
         break;
       }
-    }
   }
 
-  if(ps_ps == 0){
+  if(binded == 0){
     return -1;
   }
 
-  front = ps_ps->front;
   while(ps_ps->front == ps_ps->tail){
-    sleep(ps_ps, &netlock);
+    sleep(&net_chan, &netlock);
   }
 
+  printf("sys_recv: wakeup form sleep and going to read packet\n");
+
+  front = ps_ps->front;
   packet = ps_ps->que[front];
   struct eth *eth_hdr = (struct eth *)packet;
   struct ip *ip_hdr = (struct ip *)(eth_hdr + 1);
@@ -166,7 +164,6 @@ sys_recv(void)
 
   int flag = copyout(p->pagetable, bufaddr, load, maxlen);
   int data_len = ntohs(udp_hdr->ulen) - 8;
-
   ps_ps->front = (front + 1) % 16;
   kfree((void*)ps_ps->que[front]);
 
@@ -293,7 +290,7 @@ ip_rx(char *buf, int len)
   struct eth *eth_hdr = (struct eth *)buf;
   struct ip *ip_hdr = (struct ip *)(eth_hdr + 1);
   struct udp *udp_hdr = (struct udp *)(ip_hdr + 1);
-  struct ports_packets *ps_ps;
+  struct ports_packets* ps_ps;
 
   uint16 dport = ntohs(udp_hdr->dport);
 
@@ -306,13 +303,11 @@ ip_rx(char *buf, int len)
   acquire(&netlock);
   int binded = 0;
   for(int i = 0; i < port_count; i++){
-    if(udp_ports_packets[i]){
-      if(udp_ports_packets[i]->port == dport){
-        ps_ps = udp_ports_packets[i];
+      if(udp_ports_packets[i].port == dport){
+        ps_ps = &udp_ports_packets[i];
         binded = 1;
         break;
       }
-    }
   }
 
   if(binded){
@@ -321,7 +316,6 @@ ip_rx(char *buf, int len)
     if((tail + 1) % 16 == front){
       //drop
       kfree((void*) buf);
-
       release(&netlock);
       return;
     }
@@ -330,7 +324,7 @@ ip_rx(char *buf, int len)
     ps_ps->tail = (tail + 1) % 16;
     printf("ip_rx: put packet on the que\n");
     printf("ip_rx: the src of the packet is %x\n", ntohl(ip_hdr->ip_src));
-    wakeup(ps_ps);
+    wakeup(&net_chan);
   }else{
     //drop
     printf("ip_rx: %d haven't been binded , drop\n", dport);
