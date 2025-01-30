@@ -18,15 +18,19 @@ struct run {
   struct run *next;
 };
 
-struct {
+struct cpumem {
   struct spinlock lock;
-  struct run *freelist;
-} kmem;
+  struct run* freelist;
+};
+
+struct cpumem per_cpu_mem[NCPU];
 
 void
 kinit()
 {
-  initlock(&kmem.lock, "kmem");
+  for(int i = 0; i < NCPU; i++){
+    initlock(&per_cpu_mem[i].lock, "kmem_per_cpu");
+  }
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -56,11 +60,35 @@ kfree(void *pa)
 
   r = (struct run*)pa;
 
-  acquire(&kmem.lock);
-  r->next = kmem.freelist;
-  kmem.freelist = r;
-  release(&kmem.lock);
+  push_off();
+  int id = cpuid();
+  struct cpumem* cpu_mem = &per_cpu_mem[id];
+  acquire(&cpu_mem->lock);
+  r->next = cpu_mem->freelist;
+  cpu_mem->freelist = r;
+  release(&cpu_mem->lock);
+  pop_off();
 }
+
+void*
+steal(int myid){
+  struct run* r;
+  for(int i = 0; i < NCPU; i++){
+    if(i == myid)
+      continue;
+    struct cpumem* cpu_mem = &per_cpu_mem[i];
+    acquire(&cpu_mem->lock);
+    r = cpu_mem->freelist;
+    if(r){
+      cpu_mem->freelist = r->next;
+      release(&cpu_mem->lock);
+      break;
+    }
+    release(&cpu_mem->lock);
+  }
+  return r;
+}
+
 
 // Allocate one 4096-byte page of physical memory.
 // Returns a pointer that the kernel can use.
@@ -70,11 +98,20 @@ kalloc(void)
 {
   struct run *r;
 
-  acquire(&kmem.lock);
-  r = kmem.freelist;
-  if(r)
-    kmem.freelist = r->next;
-  release(&kmem.lock);
+  push_off();
+  int id = cpuid();
+  struct cpumem* cpu_mem = &per_cpu_mem[id];
+  acquire(&cpu_mem->lock);
+  r = cpu_mem->freelist;
+
+  if(r){
+    cpu_mem->freelist = r->next;
+    release(&cpu_mem->lock);
+  }else{
+    release(&cpu_mem->lock);
+    r =  steal(id);
+  }
+  pop_off();
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
