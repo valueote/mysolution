@@ -68,34 +68,28 @@ static struct buf *bget(uint dev, uint blockno) {
 
   while (bf) {
     if (bf->dev == dev && bf->blockno == blockno) {
-
-      acquire(&bcache.lock);
       bf->refcnt++;
-      release(&bcache.lock);
-
       release(&bcache.buckets[index].lock);
       acquiresleep(&bf->lock);
 
       return bf;
     }
+
     bf = bf->next;
   }
 
   // Not cached, find empty buf in this bucket;
   bf = bcache.buckets[index].buf;
   acquire(&bcache.lock);
-
   while (bf) {
     if (bf->refcnt == 0) {
       bf->dev = dev;
       bf->blockno = blockno;
       bf->valid = 0;
-
       bf->refcnt = 1;
-      release(&bcache.lock);
 
       release(&bcache.buckets[index].lock);
-      //printf("bget: line 106\n");
+      release(&bcache.lock);
       acquiresleep(&bf->lock);
       return bf;
     }
@@ -119,19 +113,18 @@ static struct buf *bget(uint dev, uint blockno) {
 
     while (cur) {
       if (cur->refcnt == 0) {
+        pre->next = cur->next;
+        cur->next = bf->next;
+        bf->next = cur;
+
         cur->dev = dev;
         cur->blockno = blockno;
         cur->valid = 0;
-
         cur->refcnt = 1;
-        release(&bcache.lock);
-
-        pre->next = cur->next;
-        bf->next = cur;
 
         release(&bcache.buckets[index].lock);
         release(&bcache.buckets[i].lock);
-        //printf("line 137\n");
+        release(&bcache.lock);
         acquiresleep(&cur->lock);
         return cur;
       }
@@ -169,7 +162,10 @@ void bwrite(struct buf *b) {
 void brelse(struct buf *b) {
   if (!holdingsleep(&b->lock))
     panic("brelse");
+  int index = b->blockno % NBUCKETS;
+  acquire(&bcache.buckets[index].lock);
   b->refcnt--;
+  release(&bcache.buckets[index].lock);
   releasesleep(&b->lock);
 }
 
