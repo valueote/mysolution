@@ -61,17 +61,16 @@ void binit(void) {
 // In either case, return locked buffer.
 static struct buf *bget(uint dev, uint blockno) {
 
-  // Is the block already cached?
   int index = blockno % NBUCKETS;
   acquire(&bcache.buckets[index].lock);
   struct buf *bf = bcache.buckets[index].buf;
 
+  // Is the block already cached?
   while (bf) {
     if (bf->dev == dev && bf->blockno == blockno) {
       bf->refcnt++;
       release(&bcache.buckets[index].lock);
       acquiresleep(&bf->lock);
-
       return bf;
     }
 
@@ -80,7 +79,6 @@ static struct buf *bget(uint dev, uint blockno) {
 
   // Not cached, find empty buf in this bucket;
   bf = bcache.buckets[index].buf;
-  acquire(&bcache.lock);
   while (bf) {
     if (bf->refcnt == 0) {
       bf->dev = dev;
@@ -89,15 +87,14 @@ static struct buf *bget(uint dev, uint blockno) {
       bf->refcnt = 1;
 
       release(&bcache.buckets[index].lock);
-      release(&bcache.lock);
       acquiresleep(&bf->lock);
       return bf;
     }
     bf = bf->next;
   }
 
-
-  //find empty buf in the whole bcache
+  //find empty buf in the whole bcache, move the empty buf
+  //to index buckets
   for (int i = 0; i < NBUCKETS; i++) {
     if(i == index)
       continue;
@@ -105,26 +102,29 @@ static struct buf *bget(uint dev, uint blockno) {
     acquire(&bcache.buckets[i].lock);
     bf = bcache.buckets[index].buf;
 
-    while(bf->next)
-      bf = bf->next;
-
     struct buf* cur = bcache.buckets[i].buf;
-    struct buf* pre = cur;
+    struct buf* pre = 0;
 
     while (cur) {
       if (cur->refcnt == 0) {
-        pre->next = cur->next;
-        cur->next = bf->next;
-        bf->next = cur;
-
         cur->dev = dev;
         cur->blockno = blockno;
         cur->valid = 0;
         cur->refcnt = 1;
 
+        if(pre){                //cur is not the head of the bucket
+          pre->next = cur->next;
+          cur->next = bf;
+          bcache.buckets[index].buf = cur;
+        }else{
+          pre = cur->next;
+          bcache.buckets[i].buf = pre;
+          cur->next = bf;
+          bcache.buckets[index].buf = cur;
+        }
+
         release(&bcache.buckets[index].lock);
         release(&bcache.buckets[i].lock);
-        release(&bcache.lock);
         acquiresleep(&cur->lock);
         return cur;
       }
