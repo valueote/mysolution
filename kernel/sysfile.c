@@ -543,7 +543,6 @@ sys_symlink(void)
     }else if (loop >= 10){
       iunlockput(tp);
       iput(ip);
-      iput(tp);
       return -1;
     }else{
       iunlockput(tp);
