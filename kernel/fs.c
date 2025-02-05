@@ -448,22 +448,25 @@ bmap(struct inode *ip, uint bn)
       a[index] = addr;
       log_write(bp);
     }
-
+    //get the indirect block
     inbp = bread(ip->dev, addr);
     a = (uint*)inbp->data;
-    //alloc the block if neccessary
+    //alloc the block
     if((addr = a[bn]) == 0){
       addr = balloc(ip->dev);
       if(addr){
         a[bn] = addr;
         log_write(inbp);
       }
-      brelse(inbp);
-      brelse(bp);
-      return addr;
-    }
-  }
 
+    }
+    brelse(inbp);
+    brelse(bp);
+    return addr;
+    //printf("debug: the bn is %d", bn);
+    //panic("end of the if");
+  }
+  printf("the bn is %d\n", bn);
   panic("bmap: out of range");
 }
 
@@ -498,12 +501,17 @@ itrunc(struct inode *ip)
   if(ip->addrs[NDIRECT + 1]){
     bp = bread(ip->dev, ip->addrs[NDIRECT + 1]);
     a = (uint*)bp->data;
-    for(j = 0; j < NINDIRECT; j++){
-      if(a[j]){
-        inbp = bread(ip->dev, a[j]);
+    for(i = 0; i < NINDIRECT; i++){
+      if(a[i]){
+        inbp = bread(ip->dev, a[i]);
         aa = (uint*)inbp->data;
+        for(j = 0; j < NINDIRECT; j++){
+          if(aa[j])
+            bfree(ip->dev, aa[j]);
+        }
+        brelse(inbp);
+        bfree(ip->dev, a[i]);
       }
-      bfree(ip->dev, a[j]);
     }
     brelse(bp);
     bfree(ip->dev, ip->addrs[NDIRECT + 1]);
