@@ -344,12 +344,29 @@ sys_open(void)
   if(ip->type == T_SYMLINK && !(omode & O_NOFOLLOW)){
     readi(ip, 0, (uint64)path, 0, MAXPATH);
     iunlockput(ip);
-    if((ip = namei(path)) == 0){
+    int loop = 0;
+
+    while(loop < 10){
+      if((ip = namei(path)) == 0){
+        end_op();
+        return -1;
+      }
+      ilock(ip);
+      if(ip->type == T_SYMLINK){
+        readi(ip, 0, (uint64)path, 0, MAXPATH);
+        loop++;
+        iunlockput(ip);
+      }else{
+        break;
+      }
+    }
+
+    if(loop >= 10){
       end_op();
       return -1;
     }
-    ilock(ip);
   }
+
 
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
@@ -518,7 +535,7 @@ uint64
 sys_symlink(void)
 {
   char target[MAXPATH], path[MAXPATH], name[DIRSIZ];
-  struct inode *tp, *pp, *ip;
+  struct inode *pp, *ip;
   if(argstr(0, target, MAXPATH)  < 0 || argstr(1, path, MAXPATH) < 0)
     return -1;
   begin_op();
@@ -531,23 +548,6 @@ sys_symlink(void)
   if((ip = ialloc(pp->dev, T_SYMLINK)) == 0){
     end_op();
     return -1;
-  }
-
-  int loop = 0;
-  while((tp = namei(target))){
-    ilock(tp);
-    if(tp->type == T_SYMLINK){
-      readi(tp, 0, (uint64)target, 0, MAXPATH);
-      iunlockput(tp);
-      loop++;
-    }else if (loop >= 10){
-      iunlockput(tp);
-      iput(ip);
-      return -1;
-    }else{
-      iunlockput(tp);
-      break;
-    }
   }
 
   ilock(ip);
