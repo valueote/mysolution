@@ -383,7 +383,7 @@ static uint
 bmap(struct inode *ip, uint bn)
 {
   uint addr, *a;
-  struct buf *bp;
+  struct buf *bp, *inbp;
 
   if(bn < NDIRECT){
     if((addr = ip->addrs[bn]) == 0){
@@ -416,6 +416,53 @@ bmap(struct inode *ip, uint bn)
     brelse(bp);
     return addr;
   }
+  bn -= NINDIRECT;
+
+  //find the block in the double indirect block
+  if(bn < NDOUBLEINDIRECT){
+    //alloc the double indirect block
+    if((addr = ip->addrs[NDIRECT + 1]) == 0){
+      addr = balloc(ip->dev);
+      if(addr == 0)
+        return 0;
+      ip->addrs[NDIRECT + 1] = addr;
+    }
+
+    //get the index
+    int index = 0;
+    while(bn >= NINDIRECT){
+      index++;
+      bn -= NINDIRECT;
+    }
+    //get the double indirect block
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+
+    //alloc the indirect block
+    if((addr = a[index]) == 0){
+      addr = balloc(ip->dev);
+      if(addr == 0){
+        brelse(bp);
+        return 0;
+      }
+      a[index] = addr;
+      log_write(bp);
+    }
+
+    inbp = bread(ip->dev, addr);
+    a = (uint*)inbp->data;
+    //alloc the block if neccessary
+    if((addr = a[bn]) == 0){
+      addr = balloc(ip->dev);
+      if(addr){
+        a[bn] = addr;
+        log_write(inbp);
+      }
+      brelse(inbp);
+      brelse(bp);
+      return addr;
+    }
+  }
 
   panic("bmap: out of range");
 }
@@ -426,8 +473,8 @@ void
 itrunc(struct inode *ip)
 {
   int i, j;
-  struct buf *bp;
-  uint *a;
+  struct buf *bp, *inbp;
+  uint *a, *aa;
 
   for(i = 0; i < NDIRECT; i++){
     if(ip->addrs[i]){
@@ -448,6 +495,20 @@ itrunc(struct inode *ip)
     ip->addrs[NDIRECT] = 0;
   }
 
+  if(ip->addrs[NDIRECT + 1]){
+    bp = bread(ip->dev, ip->addrs[NDIRECT + 1]);
+    a = (uint*)bp->data;
+    for(j = 0; j < NINDIRECT; j++){
+      if(a[j]){
+        inbp = bread(ip->dev, a[j]);
+        aa = (uint*)inbp->data;
+      }
+      bfree(ip->dev, a[j]);
+    }
+    brelse(bp);
+    bfree(ip->dev, ip->addrs[NDIRECT + 1]);
+    ip->addrs[NDIRECT] = 0;
+  }
   ip->size = 0;
   iupdate(ip);
 }
