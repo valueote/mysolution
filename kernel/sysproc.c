@@ -91,3 +91,36 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_mmap(void)
+{
+  uint32 len;
+  int prot, flags, fd;
+  uint64 addr, off;
+  struct proc *p;
+  pte_t* pte;
+
+  p = myproc();
+  addr = 0;
+  argint(1,(int *)&len);
+  argint(2, &prot);
+  argint(3, &flags);
+  argint(4, &flags);
+  argaddr(5, &off);
+
+  while(walk(p->pagetable, addr, 0)){
+    addr += PGSIZE;
+  }
+  if(addr >= MAXVA || (pte = walk(p->pagetable, addr, 1)) == 0)
+    panic("mmap: can't find free space");
+
+
+  return -1;
+}
+
+uint64
+sys_munmap(void)
+{
+  return -1;
+}
