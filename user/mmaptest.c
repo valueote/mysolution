@@ -200,7 +200,7 @@ mmap_test(void)
 
   int tot = 0;
   if( (tot = read(fd, buf, PGSIZE)) != PGSIZE/2){
-
+    printf("the read byte is %d\n", tot);
     err("dirty read #2");
   }
   for (i = 0; i < PGSIZE/2; i++){
