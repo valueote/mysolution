@@ -366,6 +366,17 @@ exit(int status)
   end_op();
   p->cwd = 0;
 
+  //clear mmap region
+  struct vma *v;
+  for(int k = 0; k < p->vmacnt; k++){
+    v = &p->vmas[k];
+    for(uint64 a = v->addr; a < v->addr + v->len; a += PGSIZE){
+      if(walkaddr(p->pagetable, a) == 0)
+        continue;
+      uvmunmap(p->pagetable, a, 1, 1);
+    }
+  }
+
   acquire(&wait_lock);
 
   // Give any children to init.

@@ -100,7 +100,7 @@ usertrap(void)
       ilock(v->f->ip);
       readi(v->f->ip, 0, pa, v->off +  curaddr - v->addr, PGSIZE);
       iunlock(v->f->ip);
-
+      printf("mmap: mapped %p\n", (void*)curaddr);
     }
   }
 

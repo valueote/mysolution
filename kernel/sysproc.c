@@ -166,11 +166,13 @@ sys_munmap(void)
   argint(1, (int *)&len);
   addr = PGROUNDDOWN(addr);
 
-  uint64 start, end;
-  for(int k = 0; k < p->vmacnt; k++){
+  uint64 start, bound;
+  int k;
+  for(k = 0; k < p->vmacnt; k++){
     start = p->vmas[k].addr;
-    end = start + p->vmas[k].len;
-    if( addr >= start && addr < end){
+    bound = start + p->vmas[k].len;
+    printf("the start is %p, the bound is %p\n", (void *)start, (void*)bound);
+    if( addr >= start && addr < bound){
       v = &p->vmas[k];
       break;
     }
@@ -179,22 +181,21 @@ sys_munmap(void)
   if(!v)
     return -1;
 
-  if(v->flags & MAP_SHARED){
-    //filewrite(v->f, PGROUNDDOWN(addr), PGROUNDUP(len));
-    uint64 pa, foff, end;
-    int n;
-    uint32 fsz = v->f->ip->size;
+  uint64 pa, foff, end;
+  int n;
+  uint32 fsz = v->f->ip->size;
 
-    if(len > fsz)
-      end = addr + fsz;
-    else
-      end = addr + len;
+  if(len > fsz - v->off)
+    end = addr + fsz - v->off;
+  else
+    end = addr + len;
 
-    for(uint64 a = addr; a < end; a += PGSIZE){
-      if((pa = walkaddr(p->pagetable, a)) == 0){
-        return -1;
-      }
+  for(uint64 a = addr; a < end; a += PGSIZE){
+    if((pa = walkaddr(p->pagetable, a)) == 0){
+      continue;
+    }
 
+    if(v->flags & MAP_SHARED){
       foff = v->off + (a - v->addr);
       n = PGSIZE;
       if(a + PGSIZE >= end){
@@ -207,17 +208,24 @@ sys_munmap(void)
       iunlock(v->f->ip);
       end_op();
     }
+    uvmunmap(p->pagetable, a, 1, 1);
   }
 
-  len = PGROUNDUP(len);
-  int npages = len / PGSIZE;
-  uvmunmap(p->pagetable, addr, npages, 1);
   //unmap the whole region
   if(addr == v->addr && len == v->len){
     if(v->f)
       fileclose(v->f);
     v->addr = 0;
-    v->len = -1;
+    v->len = 0;
+
+    if(p->vmacnt > 1){
+      if(k != p->vmacnt - 1){
+        for(int i = k; i < p->vmacnt - 1; i++){
+          p->vmas[i] = p->vmas[i+1];
+        }
+      }
+    }
+
     p->vmacnt--;
     printf("munmap: hit case 1\n");
   }else if(addr == v->addr && len < v->len){
