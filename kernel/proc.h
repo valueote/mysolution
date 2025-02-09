@@ -116,3 +116,6 @@ struct proc {
   struct vma vmas[NVMA];
   int vmacnt;
 };
+
+
+void m_unmap(int k, struct proc *p, uint64 addr, uint32 len);

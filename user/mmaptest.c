@@ -419,6 +419,7 @@ more_test()
   fd = open(f, O_RDONLY);
   if(fd < 0) err("open");
   if(read(fd, buf, PGSIZE) != PGSIZE) err("read");
+  printf("the first byte is %d\n", buf[0]);
   if(buf[0] != 'P') err("first byte of file is wrong");
   if(read(fd, buf, PGSIZE) != PGSIZE/2) err("read");
   if(buf[0] != 'R') err("first byte of 2nd page of file is wrong");

@@ -5,6 +5,10 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fs.h"
+#include "sleeplock.h"
+#include "file.h"
+#include "fcntl.h"
 
 struct cpu cpus[NCPU];
 
@@ -311,6 +315,7 @@ fork(void)
 
   for(int k = 0; k < p->vmacnt; k++){
     np->vmas[k] = p->vmas[k];
+    filedup(p->vmas[k].f);
   }
   np->vmacnt = p->vmacnt;
 
@@ -373,15 +378,14 @@ exit(int status)
   p->cwd = 0;
 
   //clear mmap region
-  struct vma *v;
   for(int k = 0; k < p->vmacnt; k++){
-    v = &p->vmas[k];
-    for(uint64 a = v->addr; a < v->addr + v->len; a += PGSIZE){
-      if(walkaddr(p->pagetable, a) == 0)
-        continue;
-      uvmunmap(p->pagetable, a, 1, 1);
-    }
+    m_unmap(k, p, p->vmas[k].addr, p->vmas[k].len);
+    p->vmas[k].addr = 0;
+    p->vmas[k].len = 0;
+    if(p->vmas[k].f)
+      fileclose(p->vmas[k].f);
   }
+  p->vmacnt = 0;
 
   acquire(&wait_lock);
 

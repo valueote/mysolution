@@ -86,7 +86,7 @@ usertrap(void)
       }
     }
 
-    if(!v){
+    if(!v || walkaddr(p->pagetable, curaddr) != 0){
       printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
       printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
       setkilled(p);
@@ -96,11 +96,11 @@ usertrap(void)
       }
       memset((void*)pa, 0, PGSIZE);
 
+      printf("mmap: proc %d try to map %p\n", p->pid, (void*)curaddr);
       mappages(p->pagetable, PGROUNDDOWN(curaddr), PGSIZE, pa, v->permission);
       ilock(v->f->ip);
       readi(v->f->ip, 0, pa, v->off +  curaddr - v->addr, PGSIZE);
       iunlock(v->f->ip);
-      printf("mmap: mapped %p\n", (void*)curaddr);
     }
   }
 
