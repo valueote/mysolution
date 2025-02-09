@@ -309,6 +309,12 @@ fork(void)
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
 
+  for(int k = 0; k < p->vmacnt; k++){
+    np->vmas[k] = p->vmas[k];
+  }
+  np->vmacnt = p->vmacnt;
+
+
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
