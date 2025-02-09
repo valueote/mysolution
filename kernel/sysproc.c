@@ -5,6 +5,12 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "fcntl.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
+
+#define VMASTART (MAXVA / 2)
 
 uint64
 sys_exit(void)
@@ -97,30 +103,116 @@ sys_mmap(void)
 {
   uint32 len;
   int prot, flags, fd;
-  uint64 addr, off;
+  uint64  off;
   struct proc *p;
-  pte_t* pte;
+  struct file *f;
+  struct vma* v, *pv;
 
   p = myproc();
-  addr = 0;
+  if(p->vmacnt >= NVMA)
+    panic("mmap: too many vmas");
+
   argint(1,(int *)&len);
   argint(2, &prot);
   argint(3, &flags);
-  argint(4, &flags);
+  argint(4, &fd);
   argaddr(5, &off);
 
-  while(walk(p->pagetable, addr, 0)){
-    addr += PGSIZE;
+  if(fd < 0)
+    panic("mmap: fd < 0");
+  f = p->ofile[fd];
+  filedup(f);
+
+  v = &p->vmas[p->vmacnt];
+  if(p->vmacnt == 0){
+    v->addr = PGROUNDUP(VMASTART);
+  }else{
+    pv = &p->vmas[p->vmacnt - 1];
+    v->addr = pv->addr + PGROUNDUP(pv->len);
   }
-  if(addr >= MAXVA || (pte = walk(p->pagetable, addr, 1)) == 0)
-    panic("mmap: can't find free space");
 
+  p->vmacnt++;
+  v->permission = PTE_U;
+  if(prot & PROT_READ && f->readable){
+    v->permission |= PTE_R;
+  }
+  if(prot & PROT_WRITE){
+    if(flags & MAP_PRIVATE || f->writable){
+      v->permission |= PTE_W;
+    }else{
+      p->vmacnt--;
+      return -1;
+    }
+  }
 
-  return -1;
+  v->len = len;
+  v->flags = flags;
+  v->f = f;
+  v->off = off;
+  printf("v->addr is %p\n", (void *)v->addr);
+  return v->addr;
 }
 
 uint64
 sys_munmap(void)
 {
-  return -1;
+  uint32 len;
+  uint64 addr;
+  struct proc* p;
+  struct vma* v = 0;
+
+  p = myproc();
+  argaddr(0, &addr);
+  argint(1, (int *)&len);
+  addr = PGROUNDDOWN(addr);
+  len = PGROUNDUP(len);
+
+  uint64 start, end;
+  for(int k = 0; k < p->vmacnt; k++){
+    start = p->vmas[k].addr;
+    end = start + p->vmas[k].len;
+    if( addr >= start && addr < end){
+      v = &p->vmas[k];
+      break;
+    }
+  }
+
+  if(!v)
+    return -1;
+
+  if(v->flags & MAP_SHARED){
+    //filewrite(v->f, PGROUNDDOWN(addr), PGROUNDUP(len));
+    uint64 pa;
+    for(uint64 a = addr; a < addr + len; a += PGSIZE){
+      if((pa = walkaddr(p->pagetable, a)) == 0){
+        panic("walkaddr");
+      }
+      begin_op();
+      ilock(v->f->ip);
+      writei(v->f->ip, 0, pa, v->off + a - v->addr, PGSIZE);
+      iunlock(v->f->ip);
+      end_op();
+    }
+  }
+
+  int npages = len / PGSIZE;
+  uvmunmap(p->pagetable, addr, npages, 1);
+  //unmap the whole region
+  if(addr == v->addr && len == v->len){
+    if(v->f)
+      fileclose(v->f);
+    v->addr = 0;
+    v->len = -1;
+    p->vmacnt--;
+    printf("munmap: hit case 1\n");
+  }else if(addr == v->addr && len < v->len){
+    v->addr += len;
+    v->len -= len;
+    printf("munmap: hit case 2\n");
+  }else if(addr > v->addr && len < v->len){
+    v->len -= len;
+    printf("munmap: hit case 3\n");
+  }
+
+  return 0;
 }

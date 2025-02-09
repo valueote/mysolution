@@ -139,7 +139,7 @@ found:
     release(&p->lock);
     return 0;
   }
-
+  p->vmacnt = 0;
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -168,6 +168,7 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+  p->vmacnt = 0;
   p->state = UNUSED;
 }
 

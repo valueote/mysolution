@@ -5,6 +5,9 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -67,10 +70,38 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
-    printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
-    setkilled(p);
+
+  }else {
+    uint64 curaddr = r_stval();
+    uint64 pa;
+    struct vma *v = 0;
+    uint64 start, end;
+
+    for(int k = 0; k < p->vmacnt; k++){
+      start = p->vmas[k].addr;
+      end = start + p->vmas[k].len;
+      if(curaddr < end && curaddr >= start){
+        v = &p->vmas[k];
+        break;
+      }
+    }
+
+    if(!v){
+      printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
+      setkilled(p);
+    }else{
+      if((pa = (uint64)kalloc()) == 0){
+        panic("mmap: no free mem");
+      }
+      memset((void*)pa, 0, PGSIZE);
+
+      mappages(p->pagetable, PGROUNDDOWN(curaddr), PGSIZE, pa, v->permission);
+      ilock(v->f->ip);
+      readi(v->f->ip, 0, pa, v->off +  curaddr - v->addr, PGSIZE);
+      iunlock(v->f->ip);
+
+    }
   }
 
   if(killed(p))
