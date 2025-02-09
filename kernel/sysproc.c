@@ -165,7 +165,6 @@ sys_munmap(void)
   argaddr(0, &addr);
   argint(1, (int *)&len);
   addr = PGROUNDDOWN(addr);
-  len = PGROUNDUP(len);
 
   uint64 start, end;
   for(int k = 0; k < p->vmacnt; k++){
@@ -182,19 +181,35 @@ sys_munmap(void)
 
   if(v->flags & MAP_SHARED){
     //filewrite(v->f, PGROUNDDOWN(addr), PGROUNDUP(len));
-    uint64 pa;
-    for(uint64 a = addr; a < addr + len; a += PGSIZE){
+    uint64 pa, foff, end;
+    int n;
+    uint32 fsz = v->f->ip->size;
+
+    if(len > fsz)
+      end = addr + fsz;
+    else
+      end = addr + len;
+
+    for(uint64 a = addr; a < end; a += PGSIZE){
       if((pa = walkaddr(p->pagetable, a)) == 0){
-        panic("walkaddr");
+        return -1;
       }
+
+      foff = v->off + (a - v->addr);
+      n = PGSIZE;
+      if(a + PGSIZE >= end){
+        n = end - a;
+      }
+
       begin_op();
       ilock(v->f->ip);
-      writei(v->f->ip, 0, pa, v->off + a - v->addr, PGSIZE);
+      writei(v->f->ip, 0, pa, foff, n);
       iunlock(v->f->ip);
       end_op();
     }
   }
 
+  len = PGROUNDUP(len);
   int npages = len / PGSIZE;
   uvmunmap(p->pagetable, addr, npages, 1);
   //unmap the whole region
