@@ -152,34 +152,6 @@ sys_mmap(void)
   //printf("v->addr is %p\n", (void *)v->addr);
   return v->addr;
 }
-
-int vma_writef(struct vma* v, uint64 addr, uint64 foff, int n){
-  int r, ret = 0;
-  struct file *f = v->f;
-  int max = ((MAXOPBLOCKS-1-1-2) / 2) * BSIZE;
-    int i = 0;
-    while(i < n){
-      int n1 = n - i;
-      if(n1 > max)
-        n1 = max;
-
-      begin_op();
-      ilock(f->ip);
-      if ((r = writei(f->ip, 0, addr + i, foff, n1)) > 0)
-        foff += r;
-      iunlock(f->ip);
-      end_op();
-
-      if(r != n1){
-        // error from writei
-        break;
-      }
-      i += r;
-    }
-    ret = (i == n ? n : -1);
-    return ret;
-}
-
 void m_unmap(int k, struct proc *p, uint64 addr, uint32 len){
   uint64 pa, foff, end;
   int n;
@@ -228,7 +200,6 @@ sys_munmap(void)
   for(k = 0; k < p->vmacnt; k++){
     start = p->vmas[k].addr;
     bound = start + p->vmas[k].len;
-    //printf("the start is %p, the bound is %p\n", (void *)start, (void*)bound);
     if( addr >= start && addr < bound){
       v = &p->vmas[k];
       break;
@@ -256,16 +227,13 @@ sys_munmap(void)
     }
 
     p->vmacnt--;
-    printf("munmap: hit case 1\n");
   }else if(addr == v->addr && len < v->len){
     v->addr += len;
     v->len -= len;
     v->off += len;
-    printf("munmap: hit case 2\n");
   }else if(addr > v->addr && len < v->len){
     v->len -= len;
     v->off += len;
-    printf("munmap: hit case 3\n");
   }
 
   return 0;

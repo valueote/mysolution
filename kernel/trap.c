@@ -96,7 +96,6 @@ usertrap(void)
       }
       memset((void*)pa, 0, PGSIZE);
 
-      printf("mmap: proc %d try to map %p\n", p->pid, (void*)curaddr);
       mappages(p->pagetable, PGROUNDDOWN(curaddr), PGSIZE, pa, v->permission);
       ilock(v->f->ip);
       readi(v->f->ip, 0, pa, v->off +  curaddr - v->addr, PGSIZE);
